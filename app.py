@@ -1925,23 +1925,23 @@ def setPWM(M,device,channels,fraction,ConsecutiveFails):
         CheckLowON=I2CCom(M,device,1,8,channels['ONL'],-1,0)
         CheckHighON=I2CCom(M,device,1,8,channels['ONH'],-1,0)
     
-    if(CheckLow!=(int(LowVals,2)) or CheckHigh!=(int(HighVals,2)) or CheckHighON!=int(0x00) or CheckLowON!=int(0x00)): #We check to make sure it has been set to appropriate values.
-        ConsecutiveFails=ConsecutiveFails+1
-        warn_msg = ' Failed transmission test on %s %d times consecutively on device %s (%s)' % \
-                   (str(device), ConsecutiveFails, M, sysData[M]['DeviceID'])
-        print(str(datetime.now()) + warn_msg)
-        application.logger.warning(warn_msg)
-        if ConsecutiveFails>10:
-            sysItems['Watchdog']['ON']=0 #Basically this will crash all the electronics and the software.
-            error_msg = 'Failed to communicate to PWM %d times on %s (%s). Disabling hardware and software!' \
-                        % (10, M, sysData[M]['DeviceID'])
-            print(error_msg)
-            application.logger.critical(error_msg)
-            os._exit(4)
-        else:
-            time.sleep(0.1)
-            sysItems['FailCount']=sysItems['FailCount']+1
-            setPWM(M,device,channels,fraction,ConsecutiveFails)
+        if(CheckLow!=(int(LowVals,2)) or CheckHigh!=(int(HighVals,2)) or CheckHighON!=int(0x00) or CheckLowON!=int(0x00)): #We check to make sure it has been set to appropriate values.
+            ConsecutiveFails=ConsecutiveFails+1
+            warn_msg = ' Failed transmission test on %s %d times consecutively on device %s (%s)' % \
+                    (str(device), ConsecutiveFails, M, sysData[M]['DeviceID'])
+            print(str(datetime.now()) + warn_msg)
+            application.logger.warning(warn_msg)
+            if ConsecutiveFails>10:
+                sysItems['Watchdog']['ON']=0 #Basically this will crash all the electronics and the software.
+                error_msg = 'Failed to communicate to PWM %d times on %s (%s). Disabling hardware and software!' \
+                            % (10, M, sysData[M]['DeviceID'])
+                print(error_msg)
+                application.logger.critical(error_msg)
+                os._exit(4)
+            else:
+                time.sleep(0.1)
+                sysItems['FailCount']=sysItems['FailCount']+1
+                setPWM(M,device,channels,fraction,ConsecutiveFails)
     
 
 
