@@ -94,9 +94,9 @@ sysData = {'M0' : {
    'Stir' :  {'target' : 0.0,'default' : 0.5,'max': 1.0, 'min' : 0.0, 'ON' : 0},
    'Light' :  {'target' : 0.0,'default' : 0.5,'max': 1.0, 'min' : 0.0, 'ON' : 0, 'Excite' : 'LEDD', 'record' : []},
    'Custom' :  {'Status' : 0.0,'default' : 0.0,'Program': 'C1', 'ON' : 0,'param1' : 0, 'param2' : 0, 'param3' : 0.0, 'record' : []},
-   'FP1' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit11Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit11' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
-   'FP2' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit11Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit11' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
-   'FP3' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit11Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit11' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
+   'FP1' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit1Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit1' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
+   'FP2' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit1Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit1' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
+   'FP3' : {'ON' : 0 ,'LED' : 0,'BaseBand' : 0, 'Emit1Band' : 0,'Emit2Band' : 0,'Base' : 0, 'Emit1' : 0,'Emit2' : 0,'BaseRecord' : 0, 'Emit1Record' : 0,'Emit2Record' : 0 ,'Gain' : 0},
    'biofilm' : {'LEDA' : {'nm410' : 0, 'nm440' : 0, 'nm470' : 0, 'nm510' : 0, 'nm550' : 0, 'nm583' : 0, 'nm620' : 0, 'nm670' : 0,'CLEAR' : 0,'NIR' : 0},
                 'LEDB' : {'nm410' : 0, 'nm440' : 0, 'nm470' : 0, 'nm510' : 0, 'nm550' : 0, 'nm583' : 0, 'nm620' : 0, 'nm670' : 0,'CLEAR' : 0,'NIR' : 0},
                 'LEDC' : {'nm410' : 0, 'nm440' : 0, 'nm470' : 0, 'nm510' : 0, 'nm550' : 0, 'nm583' : 0, 'nm620' : 0, 'nm670' : 0,'CLEAR' : 0,'NIR' : 0},
@@ -195,17 +195,24 @@ sysItems = {
 
 # This section of code is responsible for the watchdog circuit. The circuit is implemented in hardware on the control computer, and requires the watchdog pin be toggled low->high each second, otherwise it will power down all connected devices. This section is therefore critical to operation of the device.
 def runWatchdog():  
-    #Watchdog toggling function which continually runs in a thread.
+    #Watchdog timing function which continually runs in a thread.
     global sysItems;
     if (sysItems['Watchdog']['ON']==1):
-        sysItems['Watchdog']['thread']
-        GPIO.output(sysItems['Watchdog']['pin'], GPIO.HIGH)
-        time.sleep(0.1)
-        GPIO.output(sysItems['Watchdog']['pin'], GPIO.LOW)
-        time.sleep(0.4)
+        #sysItems['Watchdog']['thread']
+        toggleWatchdog();
+        time.sleep(0.15)
         sysItems['Watchdog']['thread']=Thread(target = runWatchdog, args=())
         sysItems['Watchdog']['thread'].setDaemon(True)
         sysItems['Watchdog']['thread'].start();
+
+def toggleWatchdog():
+    #Toggle the watchdog
+    global sysItems;
+    GPIO.output(sysItems['Watchdog']['pin'], GPIO.HIGH)
+    time.sleep(0.05)
+    GPIO.output(sysItems['Watchdog']['pin'], GPIO.LOW)
+    
+
 
 GPIO.setup(sysItems['Watchdog']['pin'], GPIO.OUT)
 print(str(datetime.now()) + ' Starting watchdog')
@@ -213,7 +220,10 @@ application.logger.info('Starting watchdog')
 sysItems['Watchdog']['thread']=Thread(target = runWatchdog, args=())
 sysItems['Watchdog']['thread'].setDaemon(True)
 sysItems['Watchdog']['thread'].start(); 
-
+GPIO.setup('P8_15', GPIO.OUT) #This output connects to the RESET pin on the I2C Multiplexer.
+GPIO.output('P8_15', GPIO.HIGH)
+GPIO.setup('P8_17', GPIO.OUT) #This output connects to D input of the D-Latch 
+GPIO.output('P8_17', GPIO.HIGH)
 
 
 def initialise(M):
@@ -1354,6 +1364,7 @@ def SetLightActuation(Excite):
     item="Light"
     if sysData[M][item]['ON']==1:
         sysData[M][item]['ON']=0
+        SetOutputOn(M,sysData[M][item]['Excite'],0) #In case the current LED is on we need to make sure it turns off
         return ('', 204)
     else:
         sysData[M][item]['Excite']=str(Excite)
@@ -1500,8 +1511,16 @@ def I2CCom(M,device,rw,hl,data1,data2,SMBUSFLAG):
                     warn_msg = 'Failed to recover multiplexer on device %s (%s)' % (M, sysData[M]['DeviceID'])
                     print(warn_msg)
                     application.logger.warning(warn_msg)
-            if tries==5:
-                time.sleep(0.2)
+
+            if (tries==5 or tries==10 or tries==15):
+                toggleWatchdog()  #Flip the watchdog pin to ensure it is working.
+                GPIO.output('P8_15', GPIO.LOW) #Flip the Multiplexer RESET pin. Note this reset function works on Control Board V1.2 and later.
+                time.sleep(0.1)
+                GPIO.output('P8_15', GPIO.HIGH)
+                time.sleep(0.1)
+                warn_msg = 'Did multiplexer hard-reset on %s (%s)' % (M, sysData[M]['DeviceID'])
+                print(warn_msg)
+                application.logger.warning(warn_msg)
                 
         if tries>20: #If it has failed a number of times then likely something is seriously wrong, so we crash the software.
             sysItems['Watchdog']['ON']=0 #Basically this will crash all the electronics and the software. 
@@ -1607,17 +1626,17 @@ def CalibrateOD(M,item,value,value2):
         b=sysData[M]['OD0']['LASERb'] 
         if (ODActual<0):
             ODActual=0
-            print("You put a negative OD into calibration! Setting it to 0")
+            print(str(datetime.now()) + "You put a negative OD into calibration! Setting it to 0")
         
         raw=((ODActual/a +  (b/(2*a))**2)**0.5) - (b/(2*a)) #THis is performing the inverse function of the quadratic OD calibration.
         OD0=(10.0**raw)*ODRaw
         if (OD0<sysData[M][item]['min']):
             OD0=sysData[M][item]['min']
-            print('OD calibration value seems too low?!')
+            print(str(datetime.now()) + 'OD calibration value seems too low?!')
 
         if (OD0>sysData[M][item]['max']):
             OD0=sysData[M][item]['max']
-            print('OD calibration value seems too high?!')
+            print(str(datetime.now()) + 'OD calibration value seems too high?!')
 
     
         sysData[M][item]['target']=OD0
@@ -1639,8 +1658,8 @@ def CalibrateOD(M,item,value,value2):
         elif (M=='M3'):
             CF=1494.0
             
-        raw=(ODActual)/a  #THis is performing the inverse function of the linear OD calibration.
-        OD0=ODRaw - raw*CF
+        #raw=(ODActual)/a  #THis is performing the inverse function of the linear OD calibration.
+        #OD0=ODRaw - raw*CF
         OD0=ODRaw/ODActual
         print(OD0)
     
@@ -1670,8 +1689,8 @@ def CalibrateOD(M,item,value,value2):
         elif (M=='M3'):
             CF=522
             
-        raw=(ODActual)/a  #THis is performing the inverse function of the linear OD calibration.
-        OD0=ODRaw - raw*CF
+        #raw=(ODActual)/a  #THis is performing the inverse function of the linear OD calibration.
+        #OD0=ODRaw - raw*CF
         OD0=ODRaw/ODActual
         print(OD0)
     
@@ -1751,12 +1770,12 @@ def MeasureOD(M):
     
         a=sysData[M]['OD0']['LASERa']#Retrieve the calibration factors for OD.
         b=sysData[M]['OD0']['LASERb'] 
-        try:
+        if abs(sysData[M]['OD0']['raw']) > 0.001: # avoid devision by 0
             raw=math.log10(sysData[M]['OD0']['target']/sysData[M]['OD0']['raw'])
             sysData[M]['OD']['current']=raw*b + raw*raw*a
-        except:
-            sysData[M]['OD']['current']=0;
-            warn_msg = ' OD Measurement exception on %s (%s) device: %s' % (M, sysData[M]['DeviceID'], str(device))
+        else:
+            sysData[M]['OD']['current']=0
+            warn_msg = ' OD Measurement close to 0 on %s (%s) device: %s' % (M, sysData[M]['DeviceID'], str(device))
             print(str(datetime.now()) + warn_msg)
             application.logger.warning(warn_msg)
     elif (device=='LEDF'):
@@ -1773,7 +1792,7 @@ def MeasureOD(M):
                 CF=1660.0
             elif (M=='M3'):
                 CF=1494.0
-            raw=out[0]/CF - sysData[M]['OD0']['target']/CF
+            #raw=out[0]/CF - sysData[M]['OD0']['target']/CF
             raw=out[0]/sysData[M]['OD0']['target']
             sysData[M]['OD']['current']=raw
         except:
@@ -1796,7 +1815,7 @@ def MeasureOD(M):
                 CF=574.0
             elif (M=='M3'):
                 CF=522.0
-            raw=out[0]/CF - sysData[M]['OD0']['target']/CF
+            #raw=out[0]/CF - sysData[M]['OD0']['target']/CF
             raw=out[0]/sysData[M]['OD0']['target']
             #sysData[M]['OD']['current']=raw*a
             sysData[M]['OD']['current']=raw
@@ -1869,13 +1888,19 @@ def MeasureTemp(M,which):
 def setPWM(M,device,channels,fraction,ConsecutiveFails):
     #Sets up the PWM chip (either the one in the reactor or on the pump board)
     global sysItems
+    global sysDevices
+
     application.logger.debug('PWM command on %s (%s) device: %s channels: %s fractions: %s ConsecutiveFails: %d' %
                             (M, sysData[M]['DeviceID'], device, channels, fraction, ConsecutiveFails))
+    
     if sysDevices[M][device]['startup']==0: #The following boots up the respective PWM device to the correct frequency. Potentially there is a bug here; if the device loses power after this code is run for the first time it may revert to default PWM frequency.
-        I2CCom(M,device,0,8,0x00,0x11,0) #Turns off device.
+        I2CCom(M,device,0,8,0x00,0x10,0) #Turns off device. Also disables all-call functionality at bit 0 so it won't respond to address 0x70
+        I2CCom(M,device,0,8,0x04,0xe6,0) #Sets SubADDR3 of the PWM chips to be 0x73 instead of 0x74 to avoid any potential collision with the multiplexer @ 0x74
         I2CCom(M,device,0,8,0xfe,sysDevices[M][device]['frequency'],0) #Sets frequency of PWM oscillator. 
         sysDevices[M][device]['startup']=1
-    I2CCom(M,device,0,8,0x00,0x01,0) #Turns device on for sure! 
+    
+    I2CCom(M,device,0,8,0x00,0x00,0) #Turns device on 
+    
         
     
     timeOn=int(fraction*4095.99)
@@ -1889,10 +1914,16 @@ def setPWM(M,device,channels,fraction,ConsecutiveFails):
     I2CCom(M,device,0,8,channels['OFFL'],int(LowVals,2),0)
     I2CCom(M,device,0,8,channels['OFFH'],int(HighVals,2),0)
     
-    CheckLow=I2CCom(M,device,1,8,channels['OFFL'],-1,0)
-    CheckHigh=I2CCom(M,device,1,8,channels['OFFH'],-1,0)
-    CheckLowON=I2CCom(M,device,1,8,channels['ONL'],-1,0)
-    CheckHighON=I2CCom(M,device,1,8,channels['ONH'],-1,0)
+    if (device=='Pumps'):
+        I2CCom(M,device,0,8,channels['ONL'],0x00,0)
+        I2CCom(M,device,0,8,channels['ONH'],0x00,0)
+        I2CCom(M,device,0,8,channels['OFFL'],int(LowVals,2),0)
+        I2CCom(M,device,0,8,channels['OFFH'],int(HighVals,2),0)
+    else:
+        CheckLow=I2CCom(M,device,1,8,channels['OFFL'],-1,0)
+        CheckHigh=I2CCom(M,device,1,8,channels['OFFH'],-1,0)
+        CheckLowON=I2CCom(M,device,1,8,channels['ONL'],-1,0)
+        CheckHighON=I2CCom(M,device,1,8,channels['ONH'],-1,0)
     
     if(CheckLow!=(int(LowVals,2)) or CheckHigh!=(int(HighVals,2)) or CheckHighON!=int(0x00) or CheckLowON!=int(0x00)): #We check to make sure it has been set to appropriate values.
         ConsecutiveFails=ConsecutiveFails+1
@@ -1974,19 +2005,21 @@ def csvData(M):
     #   for band in bands:
     #       row=row+[sysData[M]['biofilm'][item][band]]
 
-    if len(row) != len(fieldnames):
-        raise ValueError('CSV_WRITER: mismatch between column num and header num')
+
 
     filename = '%s/%s_data.csv' \
                % (application.config['DATA_DIR'], sysData[M]['Experiment']['experimentID'])
 
     lock.acquire() #We are avoiding writing to a file at the same time as we do digital communications, since it might potentially cause the computer to lag and consequently data transfer to fail.
-    if os.path.isfile(filename) is False:
-        with open(filename, 'a') as csvFile:
-            writer = csv.writer(csvFile)
-            writer.writerow(fieldnames)
+    if os.path.isfile(filename) is False: #Only if we are starting a fresh file
+        if (len(row) == len(fieldnames)):  #AND the fieldnames match up with what is being written.
+            with open(filename, 'a') as csvFile:
+                writer = csv.writer(csvFile)
+                writer.writerow(fieldnames)
+        else:
+            print('CSV_WRITER: mismatch between column num and header num')
 
-    with open(filename, 'a') as csvFile: # Here we append the above row to our CSV file.
+    with open(filename, 'a') as csvFile: # Here we append the new data to our CSV file.
         writer = csv.writer(csvFile)
         writer.writerow(row)
     csvFile.close()        
@@ -2086,6 +2119,11 @@ def RegulateOD(M):
 
     if sysData[M]['Experiment']['cycles']<3:
         Pump1=0 #In first few cycles we do precisely no pumping.
+    elif len(sysData[M]['time']['record']) < 2:
+        Pump1=0 #In first few cycles we do precisely no pumping.
+        addTerminal(M, "Warning: Tried to calculate time elapsed with fewer than two " +\
+    				"timepoints recorded. If you see this message a lot, there may be " +\
+    				"a more serious problem.")
     else:
         ODPast=sysData[M]['OD']['record'][-1]
         timeElapsed=((sysData[M]['time']['record'][-1])-(sysData[M]['time']['record'][-2]))/60.0 #Amount of time betwix measurements in minutes
@@ -2194,7 +2232,7 @@ def Zigzag(M):
     #Subsequent section is for growth estimation.
 	
     TimeSinceSwitch=iteration-sysData[M]['Zigzag']['SwitchPoint']
-    if (iteration>6 and TimeSinceSwitch>5): #The reason we wait a few minutes after starting growth is that new media may still be introduced, it takes a while for the growth to get going.
+    if (iteration>6 and TimeSinceSwitch>5 and current > 0 and last > 0 and sysData[M]['Zigzag']['target']==5.0): #The reason we wait a few minutes after starting growth is that new media may still be introduced, it takes a while for the growth to get going.
         dGrowthRate=(math.log(current)-math.log(last))*60.0 #Converting to units of 1/hour
         sysData[M]['GrowthRate']['current']=sysData[M]['GrowthRate']['current']*0.95 + dGrowthRate*0.05 #We are essentially implementing an online growth rate estimator with learning rate 0.05
 
@@ -2304,7 +2342,12 @@ def runExperiment(M,placeholder):
     MeasureTemp(M,'External')
     MeasureTemp(M,'IR')
     MeasureFP(M) #And now fluorescent protein concentrations. 
-    
+	
+    if (sysData[M]['Experiment']['ON']==0): #We do another check post-measurement to see whether we need to end the experiment.
+        turnEverythingOff(M)
+        sysData[M]['Experiment']['cycles']=sysData[M]['Experiment']['cycles']-1 # Cycle didn't finish, don't count it.
+        addTerminal(M,'Experiment Stopped')
+        return
     #Temporary Biofilm Section - the below makes the device all spectral data for all LEDs each cycle.
     
     # bands=['nm410' ,'nm440','nm470','nm510','nm550','nm583','nm620','nm670','CLEAR','NIR']    
